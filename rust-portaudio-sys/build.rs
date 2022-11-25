@@ -99,10 +99,26 @@ mod unix_platform {
         err_to_panic(env::set_current_dir(PORTAUDIO_FOLDER));
 
         // run portaudio autoconf
-        run(Command::new("./configure")
-            .args(&["--disable-shared", "--enable-static"]) // Only build static lib
-            .args(&["--prefix", out_dir.to_str().unwrap()]) // Install on the outdir
-            .arg("--with-pic")); // Build position-independent code (required by Rust)
+        let mut configure = Command::new("./configure");
+        configure.args(&["--disable-shared", "--enable-static"]); // Only build static lib
+        configure.args(&["--prefix", out_dir.to_str().unwrap()]); // Install on the outdir
+        configure.arg("--with-pic"); // Build position-independent code (required by Rust)
+
+        // cross platform builds
+        let rustc_linker = env::var("RUSTC_LINKER"); // if the linker is configured to be non default it will look like this /usr/bin/arm-linux-gnueabihf-gcc
+        let cross_platform_args = match rustc_linker {
+            Ok(linker_path) => {
+                let linker_name = linker_path.split('/').last().unwrap();
+                let last_dash_index = linker_name.rfind('-').unwrap();
+                let target_name: String = linker_name.chars().take(last_dash_index).collect();
+                // arm-linux-gnueabihf
+                vec![format!("--target={target_name}"), format!("--host={target_name}")]
+            },
+            Err(_) => vec![]
+        };
+        configure.args(&cross_platform_args);
+
+        run(&mut configure);
 
         // then make
         run(&mut Command::new("make"));
